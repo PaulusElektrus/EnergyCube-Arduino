@@ -24,4 +24,21 @@
 
     Man erkennt in den < > geschweiften Klammern die jeweils übertragene Nachricht und danach als Empfangsbestätigung (auch als Debug und zu Demonstrationszwecken verwendet) die Ausgabe des jeweiligen Mikrocontrollers im richtigen Datenformat mit Vorzeichen.
 
+- ### Statusbefehle
+
+    - from ESP to Arduino
+        - 0 = Off
+        - 1 = Charging possible
+        - 2 = Discharging possible
+
+    - from Arduino to ESP
+        - 0 = Off
+        - 1 = Charging
+        - 2 = Discharging
+        - 3 = Failure
+
+    - Außerdem:
+        - Charging = negative Power & Ampere
+        - Discharging = positive Power & Ampere
+
 - ### Weitere Informationen folgen...
