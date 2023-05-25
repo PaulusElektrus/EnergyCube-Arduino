@@ -53,14 +53,6 @@ float maxbsPowerDischarging = 100;
 
 
 void setup(){
-    pinMode(Relais_AC, OUTPUT);
-    pinMode(Relais_AC_to_NT, OUTPUT);
-    pinMode(Relais_NT_to_BT, OUTPUT);
-    pinMode(Relais_BT_to_DC, OUTPUT);
-    pinMode(Relais_DC_to_WR, OUTPUT);
-    pinMode(Relais_WR_to_AC, OUTPUT);
-    pinMode(PWM_NT, OUTPUT);
-    pinMode(PWM_DC, OUTPUT);
     Wire.begin();
     adc.init();
     adc.setVoltageRange_mV(ADS1115_RANGE_6144);
@@ -71,7 +63,7 @@ void setup(){
 void loop(){
     safetyCheck();
     control();
-    Serial.print("N");
+    Serial.print("Loop");
 }
 
 
@@ -102,7 +94,7 @@ void control() {
         off();
     }
     else if (commandFromESP == 1 && bsFull == false) {
-        if (powerFromESP < 0) {
+        if (powerFromESP < 0 || bsPower < 0) {
             if (ntReady == false) {
                 activateNT();
             }
@@ -117,7 +109,7 @@ void control() {
         }
     }
     else if (commandFromESP == 2 && bsEmpty == false) {
-        if (powerFromESP > 0) {
+        if (powerFromESP > 0 || bsPower > 0) {
             if (dcReady == false) {
                 activateDC();
             }
@@ -213,6 +205,7 @@ void discharge() {
 void getCommand() {
     measurement();
     returnData();
+    delay(100);
     recvWithStartEndMarkers();
     if (newData == true) {
         strcpy(tempChars, receivedChars);
@@ -231,7 +224,6 @@ void recvWithStartEndMarkers() {
 
     while (Serial.available() > 0 && newData == false) {
         rc = Serial.read();
-
         if (recvInProgress == true) {
             if (rc != endMarker) {
                 receivedChars[ndx] = rc;
@@ -247,7 +239,6 @@ void recvWithStartEndMarkers() {
                 newData = true;
             }
         }
-
         else if (rc == startMarker) {
             recvInProgress = true;
         }
