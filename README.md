@@ -47,7 +47,10 @@
         - 0 = Off
         - 1 = Charging
         - 2 = Discharging
-        - 3 = Failure
+        - 3 = Battery Full
+        - 4 = Battery Empty
+        - 5 = Failure: Safety parameters exceeded
+        - 7 = Failure: ADC not working
 
     - Außerdem:
         - Charging = negative Power & Ampere
