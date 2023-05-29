@@ -1,10 +1,12 @@
 // Relais Pins
 const int Relais_AC       = 6;
-const int Relais_AC_to_NT = 7;
-const int Relais_NT_to_BT = 8;   
-const int Relais_BT_to_DC = 9;
-const int Relais_DC_to_WR = 10;
-const int Relais_WR_to_AC = 11;
+const int Relais_AC_Boot  = 7; // Low = On
+const int Relais_AC_to_NT = 8;
+const int Relais_NT_to_BT = 9;   
+const int Relais_BT_to_DC = 10;
+const int Relais_DC_to_WR = 11;
+const int Relais_WR_to_AC = 12;
+const int Relais_BT       = 13; // Low = On
 
 // PWM Pins
 const int PWM_NT = 3;
@@ -65,11 +67,13 @@ const float deltaP              = 10;
 
 void setup(){
     pinMode(Relais_AC      , OUTPUT);
+    pinMode(Relais_AC_Boot , OUTPUT);
     pinMode(Relais_AC_to_NT, OUTPUT);
     pinMode(Relais_NT_to_BT, OUTPUT);   
     pinMode(Relais_BT_to_DC, OUTPUT);
     pinMode(Relais_DC_to_WR, OUTPUT);
     pinMode(Relais_WR_to_AC, OUTPUT);
+    pinMode(Relais_BT      , OUTPUT);
     Wire.begin();
     delay(5000);
     Serial.begin(115200);
