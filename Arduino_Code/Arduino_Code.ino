@@ -1,12 +1,12 @@
 // Relais Pins
-const int Relais_AC       = 6;
-const int Relais_AC_Boot  = 7; // Low = On
-const int Relais_AC_to_NT = 8;
-const int Relais_NT_to_BT = 9;   
-const int Relais_BT_to_DC = 10;
-const int Relais_DC_to_WR = 11;
-const int Relais_WR_to_AC = 12;
-const int Relais_BT       = 13; // Low = On
+const int Relais_AC       = 2;
+const int Relais_AC_Boot  = 4; // Low = On
+const int Relais_AC_to_NT = 6;
+const int Relais_NT_to_BT = 7;   
+const int Relais_BT_to_DC = 8;
+const int Relais_DC_to_WR = 9;
+const int Relais_WR_to_AC = 10;
+const int Relais_BT       = 11; // Low = On
 
 // PWM Pins
 const int PWM_NT = 3;
