@@ -88,7 +88,7 @@ void loop(){
         off();
     }
     else if (commandFromESP == 1 && bsFull == false) {
-        if (powerFromESP < 0 || bsPower < 0) {
+        if (powerFromESP < 0 - deltaP || bsPower < 0 - deltaP) {
             if (ntReady == false) {
                 activateNT();
             }
@@ -104,7 +104,7 @@ void loop(){
         }
     }
     else if (commandFromESP == 2 && bsEmpty == false) {
-        if (powerFromESP > 0 || bsPower > 0) {
+        if (powerFromESP > 0 + deltaP || bsPower > 0 + deltaP) {
             if (dcReady == false) {
                 activateDC();
             }
@@ -153,6 +153,7 @@ void safetyCheck() {
     }
     if (status >= 5) {
         while(true) {
+            off();
             measurement();
             returnData();
             delay(5000); 
@@ -172,7 +173,7 @@ void off() {
     ntSynced = false;
     dcReady = false;
     pwm = 255;
-    int controlTarget = 0;
+    controlTarget = 0;
     analogWrite(PWM_NT, pwm);
     analogWrite(PWM_DC, pwm);
 }
@@ -182,6 +183,7 @@ void activateNT() {
     off();
     digitalWrite(Relais_AC, HIGH);
     digitalWrite(Relais_AC_to_NT, HIGH);
+    delay(100);
     ntReady = true;
 }
 
@@ -197,14 +199,14 @@ void syncNT() {
 
 void charge() {
     digitalWrite(Relais_NT_to_BT, HIGH);
-    int target = controlTarget + powerFromESP;
-    if (target < maxbsPowerCharging) {target = maxbsPowerCharging;}
-    while (target <= bsPower && iBatt >= maxIBattCharging && uBatt <= maxUBatt) {
+    controlTarget = controlTarget + powerFromESP;
+    if (controlTarget < maxbsPowerCharging) {controlTarget = maxbsPowerCharging;}
+    while (controlTarget <= bsPower && iBatt >= maxIBattCharging && uBatt <= maxUBatt) {
         safetyCheck();
         pwmDecreaseNT();
         if (pwm == 0) return;
     }
-    while (target >= bsPower) {
+    while (controlTarget >= bsPower) {
         safetyCheck();
         pwmIncreaseNT();
         if (pwm == 255) return;
@@ -223,16 +225,14 @@ void activateDC() {
 
 void discharge() {
     digitalWrite(Relais_DC_to_WR, HIGH);
-    int target = controlTarget + powerFromESP;
-    if (target > maxbsPowerDischarging) {target = maxbsPowerDischarging;}
-    Serial.println(target);
-    while (target >= bsPower && bsPower <= maxbsPowerDischarging && uBatt >= minUBatt) {
-        Serial.print(bsPower);
+    controlTarget = controlTarget + powerFromESP;
+    if (controlTarget > maxbsPowerDischarging) {controlTarget = maxbsPowerDischarging;}
+    while (controlTarget >= bsPower && bsPower <= maxbsPowerDischarging && uBatt >= minUBatt) {
         safetyCheck();
         pwmDecreaseDC();
         if (pwm == 0) return;
     }
-    while (target <= bsPower) {
+    while (controlTarget <= bsPower) {
         safetyCheck();
         pwmIncreaseDC();
         if (pwm == 255) return;
@@ -281,13 +281,14 @@ void getCommand() {
     if (currentMillis - startMillis >= updateInterval)
     {
     returnData();
-    delay(50);
+    delay(100);
     recvWithStartEndMarkers();
     if (newData == true) {
         strcpy(tempChars, receivedChars);
         parseData();
         newData = false;
     }
+    else powerFromESP = 0;
     startMillis = currentMillis;
     }
 }
