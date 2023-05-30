@@ -1,12 +1,12 @@
 // Relais Pins
-const int Relais_AC       = 2;
-const int Relais_AC_Boot  = 4; // Low = On
-const int Relais_AC_to_NT = 6;
-const int Relais_NT_to_BT = 7;   
-const int Relais_BT_to_DC = 8;
-const int Relais_DC_to_WR = 9;
-const int Relais_WR_to_AC = 10;
-const int Relais_BT       = 11; // Low = On
+const int Relais_AC       = 11;
+const int Relais_AC_Boot  = 10; // Low = On
+const int Relais_AC_to_NT = 9;
+const int Relais_NT_to_BT = 8;   
+const int Relais_BT_to_DC = 7;
+const int Relais_DC_to_WR = 6;
+const int Relais_WR_to_AC = 4;
+const int Relais_BT       = 2; // Low = On
 
 // PWM Pins
 const int PWM_NT = 3;
@@ -39,7 +39,7 @@ float uBatt         = 0.0;
 float uKal          = 0.0;
 float iBatt         = 0.0;
 int bsPower         = 0.0;
-const float rFactor = 0.0111;
+const float rFactor = 0.01085;
 
 // Status
 bool ntReady    = false;
@@ -191,7 +191,7 @@ void activateNT() {
 void syncNT() {
     while (uNT <= uBatt) {
         safetyCheck();
-        pwmDecreaseNT();
+        pwmDecreaseNT();//Fehlermeldung einbauen
     }
     ntSynced = true;
 }
@@ -340,6 +340,8 @@ void parseData() {
 void returnData() {
     String outgoingData = "<" + String(status) + "," + uBatt + "," + iBatt + ">";
     Serial.print(outgoingData);
+    // Debug
+    Serial.print("uNT: " + String(uNT) + ", uBatt: " + String(uBatt) + ", uKal: " + String(uKal) + ", iBatt: " + String(iBatt));
 }
 
 
@@ -350,7 +352,7 @@ void measurement() {
     iBatt = readChannel(ADS1115_COMP_3_GND);
     uNT = uNT * rFactor;
     uBatt = uBatt * rFactor;
-    iBatt = (iBatt - (uKal / 2)) / 100;
+    iBatt = (iBatt - (uKal / 2)) / 185;
     bsPower = uBatt * iBatt;
 }
 
