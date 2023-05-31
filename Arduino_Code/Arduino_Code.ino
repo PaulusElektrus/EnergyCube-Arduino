@@ -52,17 +52,18 @@ bool bsEmpty    = false;
 int pwmNT               = 255;
 int pwmDC               = 255;
 int controlTarget       = 0;
-const int pwmDelay      = 100;
-const int pwmDelaySync  = 20;
+const int pwmDelayNT      = 100;
+const int pwmDelayNTSync  = 20;
+const int pwmDelayDC      = 10;
 
 // Safety Parameters
 const float maxUBatt            = 50;
 const float minUBatt            = 44.4;
 const float maxIBattCharging    = -5;
-const float maxIBattDischarging = 2.5;
+const float maxIBattDischarging = 3.3;
 const int bsPowerCharging       = -150;
 const int maxbsPowerCharging    = -300;
-const int bsPowerDischarging    = 100;
+const int bsPowerDischarging    = 120;
 const int maxbsPowerDischarging = 150;
 const float deltaU              = 0.4;
 const int deltaPMax             = 30;
@@ -228,7 +229,8 @@ void activateDC() {
     off();
     digitalWrite(Relais_AC, HIGH);
     digitalWrite(Relais_BT_to_DC, HIGH);
-    delay(4000);
+    digitalWrite(Relais_WR_to_AC, HIGH);
+    delay(1000);
     dcReady = true;
 }
 
@@ -237,14 +239,16 @@ void discharge() {
     controlTarget = controlTarget + powerFromESP;
     if (controlTarget > bsPowerDischarging) {controlTarget = bsPowerDischarging;}
     digitalWrite(Relais_DC_to_WR, HIGH);
-    while (controlTarget >= bsPower) {
+    while (controlTarget > bsPower + deltaPMax) {
         pwmDecreaseDC();
         safetyCheck();
+        debugPC();
         if (pwmDC == 0) return;
     }
-    while (controlTarget <= bsPower) {
+    while (controlTarget <= bsPower - deltaPMin) {
         pwmIncreaseDC();
         safetyCheck();
+        debugPC();
         if (pwmDC == 255) return;
     }
 }
@@ -254,7 +258,7 @@ void pwmIncreaseNT() {
     if (pwmNT <= 254) {
         pwmNT = ++pwmNT;
         analogWrite(PWM_NT, pwmNT);
-        delay(pwmDelay);
+        delay(pwmDelayNT);
     }
 }
 
@@ -263,7 +267,7 @@ void pwmDecreaseNT() {
     if (pwmNT >= 1) {
         pwmNT = --pwmNT;
         analogWrite(PWM_NT, pwmNT);
-        delay(pwmDelay);
+        delay(pwmDelayNT);
     }
 }
 
@@ -272,7 +276,7 @@ void pwmDecreaseNTSync() {
     if (pwmNT >= 1) {
         pwmNT = --pwmNT;
         analogWrite(PWM_NT, pwmNT);
-        delay(pwmDelaySync);
+        delay(pwmDelayNTSync);
     }
 }
 
@@ -280,8 +284,8 @@ void pwmDecreaseNTSync() {
 void pwmIncreaseDC() {
     if (pwmDC <= 254) {
         pwmDC = ++pwmDC;
-        analogWrite(PWM_NT, pwmDC);
-        delay(pwmDelay);
+        analogWrite(PWM_DC, pwmDC);
+        delay(pwmDelayDC);
     }
 }
 
@@ -289,8 +293,8 @@ void pwmIncreaseDC() {
 void pwmDecreaseDC() {
     if (pwmDC >= 1) {
         pwmDC = --pwmDC;
-        analogWrite(PWM_NT, pwmDC);
-        delay(pwmDelay);
+        analogWrite(PWM_DC, pwmDC);
+        delay(pwmDelayDC);
     }
 }
 
