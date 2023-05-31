@@ -49,20 +49,24 @@ bool bsFull     = false;
 bool bsEmpty    = false;
 
 // Control
-int pwm             = 255;
-int controlTarget   = 0;
-int pwmDelay        = 100;
+int pwmNT               = 255;
+int pwmDC               = 255;
+int controlTarget       = 0;
+const int pwmDelay      = 100;
+const int pwmDelaySync  = 20;
 
 // Safety Parameters
 const float maxUBatt            = 50;
 const float minUBatt            = 44.4;
-const float maxIBattCharging    = -2.9;
-const float maxIBattDischarging = 2.2;
-const int maxbsPowerCharging    = -150;
-const int maxbsPowerDischarging = 100;
+const float maxIBattCharging    = -5;
+const float maxIBattDischarging = 2.5;
+const int bsPowerCharging       = -150;
+const int maxbsPowerCharging    = -300;
+const int bsPowerDischarging    = 100;
+const int maxbsPowerDischarging = 150;
 const float deltaU              = 0.4;
-const float deltaI              = 0.2;
-const float deltaP              = 10;
+const int deltaPMax             = 30;
+const int deltaPMin             = 10;
 
 
 void setup(){
@@ -88,7 +92,7 @@ void loop(){
         off();
     }
     else if (commandFromESP == 1 && bsFull == false) {
-        if (powerFromESP < 0 - deltaP || bsPower < 0 - deltaP) {
+        if (powerFromESP <= 0 - deltaPMin || controlTarget <= 0 - deltaPMin) {
             if (ntReady == false) {
                 activateNT();
             }
@@ -104,7 +108,7 @@ void loop(){
         }
     }
     else if (commandFromESP == 2 && bsEmpty == false) {
-        if (powerFromESP > 0 + deltaP || bsPower > 0 + deltaP) {
+        if (powerFromESP >= 0 + deltaPMin || controlTarget >= 0 + deltaPMin) {
             if (dcReady == false) {
                 activateDC();
             }
@@ -135,28 +139,28 @@ void safetyCheck() {
         off();
         status = 4;
     }
-    if (iBatt < maxIBattCharging - deltaI) {
+    if (iBatt < maxIBattCharging) {
         off();
         status = 5;
     }
-    else if (iBatt > maxIBattDischarging + deltaI) {
+    else if (iBatt > maxIBattDischarging) {
         off();
-        status = 5;
+        status = 6;
     }
-    if (bsPower < maxbsPowerCharging - deltaP) {
+    if (bsPower < maxbsPowerCharging) {
         off();
-        status = 5;
+        status = 7;
     }
-    else if (bsPower > maxbsPowerDischarging + deltaP) {
+    else if (bsPower > maxbsPowerDischarging) {
         off();
-        status = 5;
+        status = 8;
     }
     if (status >= 5) {
         while(true) {
             off();
-            measurement();
             returnData();
-            delay(5000); 
+            delay(5000);
+            measurement(); 
         }
     }
 }
@@ -172,10 +176,11 @@ void off() {
     ntReady = false;
     ntSynced = false;
     dcReady = false;
-    pwm = 255;
+    pwmNT = 255;
+    pwmDC = 255;
     controlTarget = 0;
-    analogWrite(PWM_NT, pwm);
-    analogWrite(PWM_DC, pwm);
+    analogWrite(PWM_NT, pwmNT);
+    analogWrite(PWM_DC, pwmDC);
 }
 
 
@@ -189,27 +194,32 @@ void activateNT() {
 
 
 void syncNT() {
-    while (uNT <= uBatt) {
+    while (uNT <= uBatt - deltaU) {
         safetyCheck();
-        pwmDecreaseNT();//Fehlermeldung einbauen
+        pwmDecreaseNTSync();
+        debugPC();
+        if (pwmNT == 0) {status = 9;}
     }
     ntSynced = true;
+    safetyCheck();
 }
 
 
 void charge() {
-    digitalWrite(Relais_NT_to_BT, HIGH);
     controlTarget = controlTarget + powerFromESP;
-    if (controlTarget < maxbsPowerCharging) {controlTarget = maxbsPowerCharging;}
-    while (controlTarget <= bsPower && iBatt >= maxIBattCharging && uBatt <= maxUBatt) {
-        safetyCheck();
+    if (controlTarget < bsPowerCharging) {controlTarget = bsPowerCharging;}
+    digitalWrite(Relais_NT_to_BT, HIGH);
+    while (controlTarget <= bsPower - deltaPMax) {
         pwmDecreaseNT();
-        if (pwm == 0) return;
-    }
-    while (controlTarget >= bsPower) {
         safetyCheck();
+        debugPC();
+        if (pwmNT == 0) return;
+    }
+    while (controlTarget >= bsPower + deltaPMin) {
         pwmIncreaseNT();
-        if (pwm == 255) return;
+        safetyCheck();
+        debugPC();
+        if (pwmNT == 255) return;
     }
 }
 
@@ -224,53 +234,62 @@ void activateDC() {
 
 
 void discharge() {
-    digitalWrite(Relais_DC_to_WR, HIGH);
     controlTarget = controlTarget + powerFromESP;
-    if (controlTarget > maxbsPowerDischarging) {controlTarget = maxbsPowerDischarging;}
-    while (controlTarget >= bsPower && bsPower <= maxbsPowerDischarging && uBatt >= minUBatt) {
-        safetyCheck();
+    if (controlTarget > bsPowerDischarging) {controlTarget = bsPowerDischarging;}
+    digitalWrite(Relais_DC_to_WR, HIGH);
+    while (controlTarget >= bsPower) {
         pwmDecreaseDC();
-        if (pwm == 0) return;
+        safetyCheck();
+        if (pwmDC == 0) return;
     }
     while (controlTarget <= bsPower) {
-        safetyCheck();
         pwmIncreaseDC();
-        if (pwm == 255) return;
+        safetyCheck();
+        if (pwmDC == 255) return;
     }
 }
 
 
 void pwmIncreaseNT() {
-    if (pwm <= 254) {
-        pwm = ++pwm;
-        analogWrite(PWM_NT, pwm);
+    if (pwmNT <= 254) {
+        pwmNT = ++pwmNT;
+        analogWrite(PWM_NT, pwmNT);
         delay(pwmDelay);
     }
 }
 
 
 void pwmDecreaseNT() {
-    if (pwm >= 1) {
-        pwm = --pwm;
-        analogWrite(PWM_NT, pwm);
+    if (pwmNT >= 1) {
+        pwmNT = --pwmNT;
+        analogWrite(PWM_NT, pwmNT);
         delay(pwmDelay);
     }
 }
 
 
+void pwmDecreaseNTSync() {
+    if (pwmNT >= 1) {
+        pwmNT = --pwmNT;
+        analogWrite(PWM_NT, pwmNT);
+        delay(pwmDelaySync);
+    }
+}
+
+
 void pwmIncreaseDC() {
-    if (pwm <= 254) {
-        pwm = ++pwm;
-        analogWrite(PWM_NT, pwm);
+    if (pwmDC <= 254) {
+        pwmDC = ++pwmDC;
+        analogWrite(PWM_NT, pwmDC);
         delay(pwmDelay);
     }
 }
 
 
 void pwmDecreaseDC() {
-    if (pwm >= 1) {
-        pwm = --pwm;
-        analogWrite(PWM_NT, pwm);
+    if (pwmDC >= 1) {
+        pwmDC = --pwmDC;
+        analogWrite(PWM_NT, pwmDC);
         delay(pwmDelay);
     }
 }
@@ -340,8 +359,7 @@ void parseData() {
 void returnData() {
     String outgoingData = "<" + String(status) + "," + uBatt + "," + iBatt + ">";
     Serial.print(outgoingData);
-    // Debug
-    Serial.print("uNT: " + String(uNT) + ", uBatt: " + String(uBatt) + ", uKal: " + String(uKal) + ", iBatt: " + String(iBatt));
+    debugPC();
 }
 
 
@@ -352,7 +370,7 @@ void measurement() {
     iBatt = readChannel(ADS1115_COMP_3_GND);
     uNT = uNT * rFactor;
     uBatt = uBatt * rFactor;
-    iBatt = (iBatt - (uKal / 2)) / 185;
+    iBatt = -((iBatt - (uKal / 2)) / 185) + 0.2;
     bsPower = uBatt * iBatt;
 }
 
@@ -372,4 +390,9 @@ float readChannel(ADS1115_MUX channel) {
         return 0.0;
         status = 7;
     }
+}
+
+
+void debugPC() {
+    Serial.println("uNT: " + String(uNT) + ", uBatt: " + String(uBatt) + ", uKal: " + String(uKal) + ", iBatt: " + String(iBatt));
 }
