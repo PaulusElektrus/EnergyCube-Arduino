@@ -49,8 +49,7 @@
         - 2 = Discharging
         - 3 = Battery Full
         - 4 = Battery Empty
-        - 5 = Failure: Safety parameters exceeded
-        - 7 = Failure: ADC not working
+        - everything from 5 upwards are failures and listed in safetyCheck() function in the code
 
     - Außerdem:
         - Charging = negative Power & Ampere
