@@ -38,7 +38,7 @@ float uNT           = 0.0;
 float uBatt         = 0.0;
 float uKal          = 0.0;
 float iBatt         = 0.0;
-int bsPower         = 0.0;
+double bsPower      = 0.0;
 const float rFactor = 0.01085;
 
 // Status
@@ -49,12 +49,17 @@ bool bsFull     = false;
 bool bsEmpty    = false;
 
 // Control
-int pwmNT               = 255;
-int pwmDC               = 255;
-int controlTarget       = 0;
-const int pwmDelayNT      = 100;
-const int pwmDelayNTSync  = 20;
-const int pwmDelayDC      = 10;
+#include <PID_v1.h>
+int pwmNT                   = 255;
+double pwmDC                = 200;
+double controlTarget        = 0;
+const int pwmDelayNT        = 100;
+const int pwmDelayNTSync    = 20;
+const int pwmDelayDC        = 10;
+double Kp                   = 2;
+double Ki                   = 0.2;
+double Kd                   = 0;
+PID dcPID(&bsPower, &pwmDC, &controlTarget, Kp, Ki, Kd, REVERSE);
 
 // Safety Parameters
 const float maxUBatt            = 50;
@@ -80,6 +85,7 @@ void setup(){
     pinMode(Relais_WR_to_AC, OUTPUT);
     pinMode(Relais_BT      , OUTPUT);
     Wire.begin();
+    dcPID.SetMode(AUTOMATIC);
     delay(5000);
     Serial.begin(115200);
 }
@@ -178,7 +184,7 @@ void off() {
     ntSynced = false;
     dcReady = false;
     pwmNT = 255;
-    pwmDC = 255;
+    pwmDC = 200;
     controlTarget = 0;
     analogWrite(PWM_NT, pwmNT);
     analogWrite(PWM_DC, pwmDC);
@@ -239,18 +245,9 @@ void discharge() {
     controlTarget = controlTarget + powerFromESP;
     if (controlTarget > bsPowerDischarging) {controlTarget = bsPowerDischarging;}
     digitalWrite(Relais_DC_to_WR, HIGH);
-    while (controlTarget > bsPower + deltaPMax) {
-        pwmDecreaseDC();
-        safetyCheck();
-        debugPC();
-        if (pwmDC == 0) return;
-    }
-    while (controlTarget <= bsPower - deltaPMin) {
-        pwmIncreaseDC();
-        safetyCheck();
-        debugPC();
-        if (pwmDC == 255) return;
-    }
+    safetyCheck();
+    dcPID.Compute();
+    analogWrite(PWM_DC, pwmDC);
 }
 
 
@@ -363,7 +360,6 @@ void parseData() {
 void returnData() {
     String outgoingData = "<" + String(status) + "," + uBatt + "," + iBatt + ">";
     Serial.print(outgoingData);
-    debugPC();
 }
 
 
@@ -398,5 +394,5 @@ float readChannel(ADS1115_MUX channel) {
 
 
 void debugPC() {
-    Serial.println("uNT: " + String(uNT) + ", uBatt: " + String(uBatt) + ", uKal: " + String(uKal) + ", iBatt: " + String(iBatt));
+    Serial.println("uNT: " + String(uNT) + ", uBatt: " + String(uBatt) + ", uKal: " + String(uKal) + ", iBatt: " + String(iBatt) + ", " + String(pwmDC));
 }
