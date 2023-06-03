@@ -50,11 +50,11 @@ bool bsEmpty    = false;
 
 // Control
 int pwmNT               = 255;
-int pwmDC               = 255;
+int pwmDC               = 127;
 int controlTarget       = 0;
 const int pwmDelayNT      = 100;
 const int pwmDelayNTSync  = 20;
-const int pwmDelayDC      = 10;
+const int pwmDelayDC      = 100;
 
 // Safety Parameters
 const float maxUBatt            = 50;
@@ -178,7 +178,7 @@ void off() {
     ntSynced = false;
     dcReady = false;
     pwmNT = 255;
-    pwmDC = 255;
+    pwmDC = 127;
     controlTarget = 0;
     analogWrite(PWM_NT, pwmNT);
     analogWrite(PWM_DC, pwmDC);
@@ -239,18 +239,19 @@ void discharge() {
     controlTarget = controlTarget + powerFromESP;
     if (controlTarget > bsPowerDischarging) {controlTarget = bsPowerDischarging;}
     digitalWrite(Relais_DC_to_WR, HIGH);
+    while (controlTarget <= bsPower - deltaPMax) {
+        pwmIncreaseDC();
+        safetyCheck();
+        debugPC();
+        if (pwmDC == 255) return;
+    }
     while (controlTarget > bsPower + deltaPMax) {
         pwmDecreaseDC();
         safetyCheck();
         debugPC();
         if (pwmDC == 0) return;
     }
-    while (controlTarget <= bsPower - deltaPMin) {
-        pwmIncreaseDC();
-        safetyCheck();
-        debugPC();
-        if (pwmDC == 255) return;
-    }
+
 }
 
 
@@ -282,8 +283,8 @@ void pwmDecreaseNTSync() {
 
 
 void pwmIncreaseDC() {
-    if (pwmDC <= 254) {
-        pwmDC = ++pwmDC;
+    if (pwmDC <= 235) {
+        pwmDC = pwmDC + 20;
         analogWrite(PWM_DC, pwmDC);
         delay(pwmDelayDC);
     }
