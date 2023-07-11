@@ -36,10 +36,11 @@ const unsigned long updateInterval = 1000;
 int status          = 0;
 float uNT           = 0.0;
 float uBatt         = 0.0;
-float uKal          = 0.0;
+float uWR           = 0.0;
 float iBatt         = 0.0;
 int bsPower         = 0.0;
 const float rFactor = 0.01085;
+const float iFactor = 133.33333;
 
 // Status
 bool ntReady    = false;
@@ -108,7 +109,7 @@ void loop(){
             off();
         }
     }
-    else if (commandFromESP == 2 && bsEmpty == false) {
+    else if (commandFromESP == 1 && bsEmpty == false) {
         if (powerFromESP >= 0 + deltaPMin || controlTarget >= 0 + deltaPMin) {
             if (dcReady == false) {
                 activateDC();
@@ -368,18 +369,19 @@ void returnData() {
 
 
 void measurement() {
-    uNT = readChannel(ADS1115_COMP_0_GND);
-    uBatt = readChannel(ADS1115_COMP_1_GND);
-    uKal = readChannel(ADS1115_COMP_2_GND);
-    iBatt = readChannel(ADS1115_COMP_3_GND);
+    uBatt = readVoltage(ADS1115_COMP_0_GND);
+    uNT = readVoltage(ADS1115_COMP_1_GND);
+    uWR = readVoltage(ADS1115_COMP_2_GND);
+    iBatt = readCurrent(ADS1115_COMP_3_GND);
     uNT = uNT * rFactor;
+    uWR = uWR * rFactor;
     uBatt = uBatt * rFactor;
-    iBatt = -((iBatt - (uKal / 2)) / 185) + 0.2;
+    iBatt = iBatt * iFactor;
     bsPower = uBatt * iBatt;
 }
 
 
-float readChannel(ADS1115_MUX channel) {
+float readVoltage(ADS1115_MUX channel) {
     if (adc.init() == true){
         adc.setVoltageRange_mV(ADS1115_RANGE_6144);
         float voltage = 0.0;
@@ -397,6 +399,24 @@ float readChannel(ADS1115_MUX channel) {
 }
 
 
+float readCurrent(ADS1115_MUX channel) {
+    if (adc.init() == true){
+        adc.setVoltageRange_mV(ADS1115_RANGE_0256);
+        float voltage = 0.0;
+        adc.setCompareChannels(channel);
+        adc.startSingleMeasurement();
+        while (adc.isBusy()) {}
+        voltage = adc.getResult_mV();
+        return voltage;
+    }
+    else {
+        off();
+        return 0.0;
+        status = 7;
+    }
+}
+
+
 void debugPC() {
-    Serial.println("uNT: " + String(uNT) + ", uBatt: " + String(uBatt) + ", uKal: " + String(uKal) + ", iBatt: " + String(iBatt));
+    Serial.println("uNT: " + String(uNT) + ", uBatt: " + String(uBatt) + ", uWR>: " + String(uWR) + ", iBatt: " + String(iBatt));
 }
