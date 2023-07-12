@@ -1,4 +1,4 @@
-// Relais Pins
+// Relais Pins //
 const int Relais_AC       = 11;
 const int Relais_AC_Boot  = 10; // Low = On
 const int Relais_AC_to_NT = 9;
@@ -8,31 +8,31 @@ const int Relais_DC_to_WR = 6;
 const int Relais_WR_to_AC = 4;
 const int Relais_BT       = 2; // Low = On
 
-// PWM Pins
+// PWM Pins //
 const int PWM_NT = 3;
 const int PWM_DC = 5;
 
-// ADS1115
+// ADS1115 //
 #include<ADS1115_WE.h> 
 #include<Wire.h>
 ADS1115_WE adc = ADS1115_WE(0x48);
 
-// Incoming Communication
+// Incoming Communication //
 boolean newData = false;
 const byte numChars = 32;
 char receivedChars[numChars];
 char tempChars[numChars];
 
-// Incoming Data
+// Incoming Data //
 int commandFromESP  = 0;
 int powerFromESP    = 0;
 
-// UART Timing
+// UART Timing //
 unsigned long startMillis;
 unsigned long currentMillis;
-const unsigned long updateInterval = 1000;
+const unsigned long updateInterval = 500;
 
-// Measurements
+// Measurements //
 int status          = 0;
 float uNT           = 0.0;
 float uBatt         = 0.0;
@@ -40,37 +40,40 @@ float uWR           = 0.0;
 float iBatt         = 0.0;
 int bsPower         = 0.0;
 const float rFactor = 0.01085;
-const float iFactor = 133.33333;
+const float iFactor = 0.13333333;
 
-// Status
-bool ntReady    = false;
-bool ntSynced   = false;
-bool dcReady    = false;
-bool bsFull     = false;
-bool bsEmpty    = false;
+// Status //
+bool ntReady        = false;
+bool ntSynced       = false;
+bool dcReady        = false;
+bool bsFull         = false;
+bool bsEmpty        = false;
 
-// Control
+// Control //
 int pwmNT               = 255;
+const int pwmNTStep     = 1;
 int pwmDC               = 255;
+const int pwmDCStep     = 3;
 int controlTarget       = 0;
 const int pwmDelayNT      = 100;
-const int pwmDelayNTSync  = 20;
-const int pwmDelayDC      = 10;
+const int pwmDelayNTSync  = 1;
+const int pwmDelayDC      = 1;
 
-// Safety Parameters
+// Safety Parameters //
 const float maxUBatt            = 50;
 const float minUBatt            = 44.4;
-const float maxIBattCharging    = -5;
-const float maxIBattDischarging = 3.3;
-const int bsPowerCharging       = -150;
-const int maxbsPowerCharging    = -300;
-const int bsPowerDischarging    = 120;
-const int maxbsPowerDischarging = 150;
-const float deltaU              = 0.4;
-const int deltaPMax             = 30;
+const float maxIBattCharging    = -10;
+const float maxIBattDischarging = 7.5;
+const int bsPowerCharging       = -600;
+const int maxbsPowerCharging    = -650;
+const int bsPowerDischarging    = 300;
+const int maxbsPowerDischarging = 320;
+const float deltaU              = 0.2;
+const int deltaPMax             = 15;
 const int deltaPMin             = 10;
 
 
+// Setup runs once at boot //
 void setup(){
     pinMode(Relais_AC      , OUTPUT);
     pinMode(Relais_AC_Boot , OUTPUT);
@@ -84,47 +87,19 @@ void setup(){
     delay(5000);
     Serial.begin(115200);
 }
+///////////////////////////////////////////////////
 
 
+// Main Loop //
 void loop(){
     safetyCheck();
     getCommand();
-    if (commandFromESP == 0) {
-        status = 0;
-        off();
-    }
-    else if (commandFromESP == 1 && bsFull == false) {
-        if (powerFromESP <= 0 - deltaPMin || controlTarget <= 0 - deltaPMin) {
-            if (ntReady == false) {
-                activateNT();
-            }
-            if (ntSynced == false) { 
-                syncNT();
-            }
-            status = 1;
-            charge();
-        }   
-        else {
-            status = 0;
-            off();
-        }
-    }
-    else if (commandFromESP == 1 && bsEmpty == false) {
-        if (powerFromESP >= 0 + deltaPMin || controlTarget >= 0 + deltaPMin) {
-            if (dcReady == false) {
-                activateDC();
-            }
-            status = 2;
-            discharge();
-        }   
-        else {
-            status = 0;
-            off();
-        }
-    }
+    control();
 }
+///////////////////////////////////////////////////
 
 
+// Checks safety parameters //
 void safetyCheck() {
     measurement();
     if (uBatt > maxUBatt + deltaU) {
@@ -166,159 +141,38 @@ void safetyCheck() {
         }
     }
 }
+///////////////////////////////////////////////////
 
 
-void off() {
-    digitalWrite(Relais_AC, LOW);
-    digitalWrite(Relais_AC_to_NT, LOW);
-    digitalWrite(Relais_NT_to_BT, LOW);
-    digitalWrite(Relais_BT_to_DC, LOW);
-    digitalWrite(Relais_DC_to_WR, LOW);
-    digitalWrite(Relais_WR_to_AC, LOW);
-    ntReady = false;
-    ntSynced = false;
-    dcReady = false;
-    pwmNT = 255;
-    pwmDC = 255;
-    controlTarget = 0;
-    analogWrite(PWM_NT, pwmNT);
-    analogWrite(PWM_DC, pwmDC);
-}
-
-
-void activateNT() {
-    off();
-    digitalWrite(Relais_AC, HIGH);
-    digitalWrite(Relais_AC_to_NT, HIGH);
-    delay(100);
-    ntReady = true;
-}
-
-
-void syncNT() {
-    while (uNT <= uBatt - deltaU) {
-        safetyCheck();
-        pwmDecreaseNTSync();
-        debugPC();
-        if (pwmNT == 0) {status = 9;}
-    }
-    ntSynced = true;
-    safetyCheck();
-}
-
-
-void charge() {
-    controlTarget = controlTarget + powerFromESP;
-    if (controlTarget < bsPowerCharging) {controlTarget = bsPowerCharging;}
-    digitalWrite(Relais_NT_to_BT, HIGH);
-    while (controlTarget <= bsPower - deltaPMax) {
-        pwmDecreaseNT();
-        safetyCheck();
-        debugPC();
-        if (pwmNT == 0) return;
-    }
-    while (controlTarget >= bsPower + deltaPMin) {
-        pwmIncreaseNT();
-        safetyCheck();
-        debugPC();
-        if (pwmNT == 255) return;
-    }
-}
-
-
-void activateDC() {
-    off();
-    digitalWrite(Relais_AC, HIGH);
-    digitalWrite(Relais_BT_to_DC, HIGH);
-    digitalWrite(Relais_WR_to_AC, HIGH);
-    delay(1000);
-    dcReady = true;
-}
-
-
-void discharge() {
-    controlTarget = controlTarget + powerFromESP;
-    if (controlTarget > bsPowerDischarging) {controlTarget = bsPowerDischarging;}
-    digitalWrite(Relais_DC_to_WR, HIGH);
-    while (controlTarget > bsPower + deltaPMax) {
-        pwmDecreaseDC();
-        safetyCheck();
-        debugPC();
-        if (pwmDC == 0) return;
-    }
-    while (controlTarget <= bsPower - deltaPMin) {
-        pwmIncreaseDC();
-        safetyCheck();
-        debugPC();
-        if (pwmDC == 255) return;
-    }
-}
-
-
-void pwmIncreaseNT() {
-    if (pwmNT <= 254) {
-        pwmNT = ++pwmNT;
-        analogWrite(PWM_NT, pwmNT);
-        delay(pwmDelayNT);
-    }
-}
-
-
-void pwmDecreaseNT() {
-    if (pwmNT >= 1) {
-        pwmNT = --pwmNT;
-        analogWrite(PWM_NT, pwmNT);
-        delay(pwmDelayNT);
-    }
-}
-
-
-void pwmDecreaseNTSync() {
-    if (pwmNT >= 1) {
-        pwmNT = --pwmNT;
-        analogWrite(PWM_NT, pwmNT);
-        delay(pwmDelayNTSync);
-    }
-}
-
-
-void pwmIncreaseDC() {
-    if (pwmDC <= 254) {
-        pwmDC = ++pwmDC;
-        analogWrite(PWM_DC, pwmDC);
-        delay(pwmDelayDC);
-    }
-}
-
-
-void pwmDecreaseDC() {
-    if (pwmDC >= 1) {
-        pwmDC = --pwmDC;
-        analogWrite(PWM_DC, pwmDC);
-        delay(pwmDelayDC);
-    }
-}
-
-
+// Function to receive and send data to ESP //
 void getCommand() {
+    powerFromESP = 0;
     currentMillis = millis();
     if (currentMillis - startMillis >= updateInterval)
     {
-    returnData();
-    delay(100);
-    recvWithStartEndMarkers();
-    if (newData == true) {
-        strcpy(tempChars, receivedChars);
-        parseData();
-        newData = false;
-    }
-    else powerFromESP = 0;
-    startMillis = currentMillis;
+        returnData();
+        delay(100);
+        recvWithStartEndMarkers();
+        if (newData == true) {
+            strcpy(tempChars, receivedChars);
+            parseData();
+            newData = false;
+        }
+        startMillis = currentMillis;
     }
 }
 
 
+// Sending data to ESP
+void returnData() {
+    String outgoingData = "<" + String(status) + "," + uBatt + "," + iBatt + ">";
+    Serial.print(outgoingData);
+}
+
+
+// Receiving data from ESP
 void recvWithStartEndMarkers() {
+// Code from: https://forum.arduino.cc/t/serial-input-basics-updated/382007/3
     static boolean recvInProgress = false;
     static byte ndx = 0;
     char startMarker = '<';
@@ -349,6 +203,7 @@ void recvWithStartEndMarkers() {
 }
 
 
+// Parsing Data received from ESP
 void parseData() {
 
     char * strtokIndx;
@@ -359,15 +214,188 @@ void parseData() {
     strtokIndx = strtok(NULL, ",");
     powerFromESP = atof(strtokIndx);
 }
+///////////////////////////////////////////////////
 
 
-void returnData() {
-    String outgoingData = "<" + String(status) + "," + uBatt + "," + iBatt + ">";
-    Serial.print(outgoingData);
-    debugPC();
+// Main control function, determines if charging or discharging //
+void control() {
+    controlTarget = controlTarget + powerFromESP;
+    if (commandFromESP == 0) {
+            status = 0;
+            controlTarget = 0;
+            off();
+        }
+    else if (commandFromESP == 1) {
+        if (controlTarget <= 0 - deltaPMin) {
+            if (bsFull == false) {
+                if (ntReady == false) {
+                    activateNT();
+                }
+                if (ntSynced == false) { 
+                    syncNT();
+                }
+                if (controlTarget < bsPowerCharging) {controlTarget = bsPowerCharging;}
+                status = 1;
+                charge();
+            }
+        }
+        else if (controlTarget >= 0 + deltaPMin) {
+            if (bsEmpty == false) {
+                if (dcReady == false) {
+                    activateDC();
+                }
+                if (controlTarget > bsPowerDischarging) {controlTarget = bsPowerDischarging;}
+                status = 2;
+                discharge();
+            }
+        }
+        else {
+            status = 0;
+            off();
+        }
+    }
+}
+///////////////////////////////////////////////////
+
+
+// Will be called when battery storage should turn off //
+void off() {
+    digitalWrite(Relais_AC, LOW);
+    digitalWrite(Relais_AC_to_NT, LOW);
+    digitalWrite(Relais_NT_to_BT, LOW);
+    digitalWrite(Relais_BT_to_DC, LOW);
+    digitalWrite(Relais_DC_to_WR, LOW);
+    digitalWrite(Relais_WR_to_AC, LOW);
+    ntReady = false;
+    ntSynced = false;
+    dcReady = false;
+    pwmNT = 255;
+    pwmDC = 255;
+    analogWrite(PWM_NT, pwmNT);
+    analogWrite(PWM_DC, pwmDC);
+}
+///////////////////////////////////////////////////
+
+
+// Activates the Charger //
+void activateNT() {
+    off();
+    digitalWrite(Relais_AC, HIGH);
+    digitalWrite(Relais_AC_to_NT, HIGH);
+    ntReady = true;
 }
 
 
+// Synces the charger with battery voltage
+void syncNT() {
+    while (uNT <= uBatt - deltaU) {
+        safetyCheck();
+        pwmDecreaseNTSync();
+        debugPC();
+        if (pwmNT == 0) {status = 9;}
+    }
+    ntSynced = true;
+    safetyCheck();
+}
+
+
+// Control function for charging power
+void charge() {
+    digitalWrite(Relais_NT_to_BT, HIGH);
+    while (controlTarget <= bsPower - deltaPMin) {
+        pwmDecreaseNT();
+        safetyCheck();
+        debugPC();
+        if (pwmNT == 0) return;
+    }
+    while (controlTarget > bsPower + deltaPMin) {
+        pwmIncreaseNT();
+        safetyCheck();
+        debugPC();
+        if (pwmNT == 255) return;
+    }
+}
+///////////////////////////////////////////////////
+
+
+// Activates Discharging //
+void activateDC() {
+    off();
+    digitalWrite(Relais_AC, HIGH);
+    digitalWrite(Relais_WR_to_AC, HIGH);
+    digitalWrite(Relais_BT_to_DC, HIGH);
+    digitalWrite(Relais_DC_to_WR, HIGH);
+    delay(2000);
+    dcReady = true;
+}
+
+
+// Control function for discharging power
+void discharge() {
+    while (controlTarget >= bsPower + deltaPMax) {
+        pwmDecreaseDC();
+        safetyCheck();
+        debugPC();
+        if (pwmDC == 0) return;
+    }
+    while (controlTarget < bsPower - deltaPMin) {
+        pwmIncreaseDC();
+        safetyCheck();
+        debugPC();
+        if (pwmDC == 255) return;
+    }
+}
+///////////////////////////////////////////////////
+
+
+// PWM helper functions //
+void pwmIncreaseNT() {
+    if (pwmNT <= 255 - pwmNTStep) {
+        pwmNT = pwmNT + pwmNTStep;
+        analogWrite(PWM_NT, pwmNT);
+        delay(pwmDelayNT);
+    }
+}
+
+
+void pwmDecreaseNT() {
+    if (pwmNT >= 0 + pwmNTStep) {
+        pwmNT = pwmNT - pwmNTStep;
+        analogWrite(PWM_NT, pwmNT);
+        delay(pwmDelayNT);
+    }
+}
+
+
+void pwmDecreaseNTSync() {
+    if (pwmNT >= 10) {
+        pwmNT = pwmNT - 10;
+        analogWrite(PWM_NT, pwmNT);
+        delay(pwmDelayNTSync);
+    }
+}
+
+
+void pwmIncreaseDC() {
+    if (pwmDC <= 255 - pwmDCStep) {
+        pwmDC = pwmDC + pwmDCStep;
+        analogWrite(PWM_DC, pwmDC);
+        delay(pwmDelayDC);
+    }
+}
+
+
+void pwmDecreaseDC() {
+    if (pwmDC >= 0 + pwmDCStep) {
+        pwmDC = pwmDC - pwmDCStep;
+        analogWrite(PWM_DC, pwmDC);
+        delay(pwmDelayDC);
+    }
+}
+///////////////////////////////////////////////////
+
+
+// Measurement Section //
 void measurement() {
     uBatt = readVoltage(ADS1115_COMP_0_GND);
     uNT = readVoltage(ADS1115_COMP_1_GND);
@@ -376,7 +404,7 @@ void measurement() {
     uNT = uNT * rFactor;
     uWR = uWR * rFactor;
     uBatt = uBatt * rFactor;
-    iBatt = iBatt * iFactor;
+    iBatt = -iBatt * iFactor;
     bsPower = uBatt * iBatt;
 }
 
@@ -415,8 +443,11 @@ float readCurrent(ADS1115_MUX channel) {
         status = 7;
     }
 }
+///////////////////////////////////////////////////
 
 
+// Function can be called when a debug information to PC is needed //
 void debugPC() {
-    Serial.println("uNT: " + String(uNT) + ", uBatt: " + String(uBatt) + ", uWR>: " + String(uWR) + ", iBatt: " + String(iBatt));
+    Serial.println("uNT: " + String(uNT) + ", uBatt: " + String(uBatt) + ", uWR>: " + String(uWR) + ", iBatt: " + String(iBatt) + ", controlTarget: " + String(controlTarget));
 }
+///////////////////////////////////////////////////

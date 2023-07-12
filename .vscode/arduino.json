@@ -1,6 +1,0 @@
-{
-    "board": "arduino:avr:uno",
-    "port": "/dev/ttyUSB0",
-    "sketch": "Arduino_Code/Arduino_Code.ino",
-    "output": "./.build"
-}

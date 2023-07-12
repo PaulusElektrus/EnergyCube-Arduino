@@ -1,3 +1,4 @@
 .build
 __pycache__
-calibrationPWM.ino
+calibrationPWM
+.vscode
